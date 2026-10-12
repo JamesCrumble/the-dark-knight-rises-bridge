@@ -2,7 +2,8 @@
 
 **English:** run **The Dark Knight Rises 1.1.6** (Gameloft, 32-bit ARMv7, Amazon build `GloftKRAS`) on
 64-bit-only Android phones that have no AArch32 support. The game runs under a patched `qemu-user`, and its
-OpenGL ES calls are forwarded to the phone's real GPU. First build; started on a OnePlus 13s (Snapdragon 8 Elite).
+OpenGL ES calls are forwarded to the phone's real GPU. Tested on a OnePlus 13s (Snapdragon 8 Elite): 100-120 fps in
+the first mission.
 No game files are included: you need your own copy. The rest of this page is in Russian.
 
 Запуск 32-битной **The Dark Knight Rises** (Gameloft, v1.1.6, только `armeabi-v7a`) на 64-битных
@@ -13,29 +14,55 @@ GPU телефона. Способ тот же, что в NOVA3 Bridge, Shadowgu
 взят NOVA3 Bridge (тот же движок Gameloft).
 
 **Игра не распространяется.** Нужны ваши собственные APK версии 1.1.6 и кэш к ней.
+Готовая сборка: [Releases](https://github.com/JamesCrumble/the-dark-knight-rises-bridge/releases).
+
+[Состояние](#состояние) · [Установка](#установка) · [Настройки](#настройки) · [Как это устроено](#как-это-устроено) ·
+[Производительность](#производительность) · [Структура](#структура) · [Сборка](#сборка) · [Диагностика](#диагностика) ·
+[Другие игры](#другие-игры) · [Лицензия и авторство](#лицензия-и-авторство)
 
 ## Состояние
 
-Первая сборка (0.1).
-
-- На ПК (qemu-arm + программный GL): игра загружается до главного меню, картинка правильная.
-- На OnePlus 13s: игра запускается, главное меню идёт ~55 fps, касания доходят до игры.
-- Не проверено: прохождение миссий, звук на слух (по логу игра открывает звуковой выход и пишет в него),
-  геймпад (раскладка кнопок осталась от N.O.V.A. 3), долгая игра.
+- Игра запускается на OnePlus 13s (Snapdragon 8 Elite, Android 15): меню, первая миссия, бой.
+- Скорость при лимите 120: меню 120 fps, первая миссия 100–120 fps.
+- Касания работают. Геймпад не проверялся: раскладка кнопок осталась от N.O.V.A. 3.
+- Звук: игра открывает звуковой выход и пишет в него; на слух отдельно не проверялся.
+- Проверено на одном устройстве. Долгая игра и остальные миссии не проверялись.
 
 ## Установка
 
-1. Установите `TDKR-Bridge-debug.apk` (пакет `com.jamescrumble.tdkr`).
+1. Установите `TDKR-Bridge-<версия>.apk` со страницы Releases (пакет `com.jamescrumble.tdkr`).
 2. Положите в `/sdcard/Android/data/com.jamescrumble.tdkr/files/`:
    - оригинальный APK игры 1.1.6;
    - папку `com.gameloft.android.AMAZ.GloftKRAS` из распакованного архива кэша (внутри `files/data`,
      `files/textures`).
 3. Если копировали по adb, откройте папки приложению (adb создаёт их от имени `shell`):
    `adb shell "find /sdcard/Android/data/com.jamescrumble.tdkr/files/com.gameloft.android.AMAZ.GloftKRAS -type d -exec chmod 2777 {} +"`
-4. Откройте приложение и нажмите «Играть».
+4. Откройте приложение, при необходимости поменяйте настройки и нажмите «Играть».
 
-Из папки проекта всё это делает `tools/push_data.sh`. Если чего-то не хватает, причина пишется на экране и в
-`tdkr.log` в папке с файлами игры.
+Из папки проекта шаги 2–3 делает `tools/push_data.sh`. Если чего-то не хватает, причина пишется на экране и в
+`tdkr.log` в папке с файлами игры. Первый запуск дольше: распаковывается sysroot (~100 МБ).
+
+## Настройки
+
+Экран настроек открывается при старте приложения. Значения хранятся в `settings.txt` рядом с файлами игры.
+
+| Настройка | Ключ | Что делает |
+|---|---|---|
+| Отступ интерфейса от краёв | `TDKR_HUD_INSET` | 0–12 %: кнопки и карта стягиваются к центру, 3D остаётся во весь экран |
+| Дальность камеры на бегу | `TDKR_CAMERA_DISTANCE` | 100–200 %; 100 % — как в оригинале |
+| Дальность камеры в бою | `TDKR_FIGHT_CAMERA` | 100–250 %; 100 % — как в оригинале |
+| Разрешение рендера (высота) | `RENDER_HEIGHT` | 480 / 540 / 720, по умолчанию 720 |
+| Лимит кадров | `FPS_LIMIT` | 30 / 60 / 90 / 120, по умолчанию 60; ему же следует ограничитель самого движка |
+| Счётчик FPS | `FPS_COUNTER` | Показывает fps поверх игры |
+| Буфер звука | `AUDIO_LATENCY_MS` | Размер буфера AudioTrack |
+| Кадров «в полёте» | `TDKR_GL_INFLIGHT` | Сколько кадров мост может держать в очереди к GPU, по умолчанию 2 |
+| Только быстрые ядра (6–7) | `CPU_PRIME` | Привязывает qemu к двум самым быстрым ядрам; по умолчанию включено |
+| Подсказки производительности (ADPF) | `PERF_HINT` | Сообщает системе длительность кадров; по умолчанию выключено |
+| Профилирование в логе | `QEMU_GUEST_PROF` | Диагностика |
+
+Отступ интерфейса и дальность камеры в бою сделаны последними и в игре ещё не подтверждены. Отступ определяет
+интерфейс по состоянию GL (рисование прямо на экран без теста глубины, с прозрачностью), поэтому вместе с ним
+могут сжаться полноэкранные затемнения.
 
 ## Как это устроено
 
@@ -59,8 +86,27 @@ GPU телефона. Способ тот же, что в NOVA3 Bridge, Shadowgu
   (`port/game/jni/audio_track.cpp`), тот пишет в FIFO, а обёртка играет его настоящим `AudioTrack`.
 - **qemu** (`qemu/`): QEMU 11.1.2 с патчами из NOVA3 Bridge (вариант F).
 
-Чем эта игра отличается от N.O.V.A. 3 и что из этого следует для порта — в [PROJECT_STATE.md](PROJECT_STATE.md).
+История версий — в [CHANGELOG.md](CHANGELOG.md). Чем эта игра отличается от N.O.V.A. 3 и что из этого следует для порта — в [PROJECT_STATE.md](PROJECT_STATE.md).
 Архитектура обёртки — в [port/android/README.md](port/android/README.md).
+
+## Производительность
+
+Используется QEMU 11.1.2 с набором правок под AArch64-хост из NOVA3 Bridge (плавающая точка и NEON на
+процессоре телефона, быстрый поиск блоков при косвенных переходах; подробно в [qemu/README.md](qemu/README.md)).
+Собранный вариант F взят из того проекта готовым и здесь не пересобирался.
+
+Что дало скорость именно в этой игре (первая миссия, OnePlus 13s):
+
+| Шаг | fps |
+|---|---|
+| первая сборка | 40 |
+| qemu закреплён на ядрах 6–7 | 55 |
+| ограничитель движка следует лимиту кадров (120) | 100–120 |
+
+- На средних ядрах система держала главный поток игры на 1,5 ГГц с `uclamp.max` 240; на ядрах 6–7 тот же кадр
+  укладывается в бюджет даже при потолке 1,2–1,4 ГГц.
+- Движок сам ограничивает частоту: каждый кадр спит 1 мс и затем досыпает до 1000/60 мс, что давало потолок
+  ~56 fps. Сон в 1 мс убран, а 60 заменяется лимитом из настроек (`port/game/tweaks.cpp`).
 
 ## Структура
 
@@ -94,9 +140,28 @@ tools/build_install.sh noinstall   # порт + APK -> port/TDKR-Bridge-debug.ap
 tools/build_install.sh             # то же и установка на телефон по adb
 tools/run_pc.sh 600                # запуск на ПК под qemu-arm, 600 кадров, лог в logs/pc_run.log
 tools/pull_log.sh                  # лог с телефона -> logs/phone.log
+tools/make_release.sh              # релизный APK, архив исходников и INSTALL.txt в release/<версия>/
 ```
 
 Телефон из WSL виден через виндовый `adb.exe`: обёртка `tools/adb`.
+
+## Диагностика
+
+- Лог игры: `tools/pull_log.sh` → `logs/phone.log`. Строка `[gl] frames` раз в несколько секунд показывает fps,
+  число GL-команд, загрузку моста, текущую частоту и потолок частоты ядра, `uclamp`.
+- `engine_env.txt` рядом с логом (строки `KEY=VALUE`): `TDKR_GL_PROFILE=1` — время кадра и время процессора на кадр,
+  `TDKR_SLEEP_TRACE=1` — кто в движке вызывает сон.
+- На ПК: `tools/run_pc.sh`, управление и скриншоты — `tools/drive.py`, замер кадра — `tools/bench_pc.py`
+  (в режиме моста до миссии пока не доходит, с `--gl` доходит).
+- Профиль кода игры по логу: `tools/guest_prof.py`.
+
+## Другие игры
+
+Тот же способ запуска — qemu-user и мост GLES на GPU телефона — для других 32-битных игр:
+
+- [NOVA3 Bridge](https://github.com/JamesCrumble/NOVA3-Bridge) — N.O.V.A. 3 1.0.7 (Gameloft)
+- [Shadowgun Bridge](https://github.com/JamesCrumble/shadowgun-bridge) — SHADOWGUN 1.7.0 (Unity 5.3)
+- [Mass Effect Infiltrator Bridge](https://github.com/JamesCrumble/mass-effect-infiltrator-bridge) — Mass Effect Infiltrator 1.0.58
 
 ## Лицензия и авторство
 
@@ -104,6 +169,6 @@ GPL-3.0, см. [LICENSE](LICENSE). Происхождение заимствов
 [port/NOTICE.md](port/NOTICE.md). Патч qemu — GPL-2.0-or-later, как сам QEMU.
 
 Порт N.O.V.A. 3 для PortMaster и его `portbase`, на которых основан проект, созданы EapRules.
-Android-мост и слой этой игры написаны JamesCrumble.
+Android-мост и слой этой игры написаны JamesCrumble; в работе над этим проектом участвовал Claude (Anthropic).
 
 The Dark Knight Rises © Gameloft / Warner Bros. Проект не связан с правообладателями и не содержит файлов игры.

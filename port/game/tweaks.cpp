@@ -173,8 +173,132 @@ static void install_frame_limit(so_module *mod)
     }
 }
 
+/*
+ * <PREFIX>_CAMERA_DISTANCE=130: the camera stands 1.3 times farther from the hero.
+ *
+ * The camera controller keeps its offset from the hero as a vector (floats at +896, +900, +904) and a
+ * multiplier next to it (+920; the script function SetCameraOffsetMultiplier at +0x185aac stores its
+ * argument there). Three places compute vector * multiplier, each starting with the same load:
+ *
+ *     200144  vldr s15, [r4, #920]      208f34  vldr s15, [r4, #920]      200e3c  vldr s15, [r1, #920]
+ *
+ * and each loads s14 next, so s14 is free at that point. The load is replaced by a branch to a small
+ * stub (load, times the factor, branch back). Writing the factor into the field instead does not hold:
+ * the engine rewrites the field itself, six times in the first seconds of a mission.
+ */
+extern uintptr_t so_alloc_arena(so_module *so, uintptr_t range, uintptr_t dst, size_t sz);
+
+static uint32_t arm_branch(uintptr_t from, uintptr_t to)
+{
+    return 0xea000000u | ((uint32_t)((to - (from + 8)) >> 2) & 0x00ffffffu);
+}
+
+static void install_camera_distance(so_module *mod, float factor)
+{
+    static const struct { uint32_t offset, load; } kSites[] = {
+        { 0x200144, 0xedd47ae6u }, { 0x208f34, 0xedd47ae6u }, { 0x200e3c, 0xedd17ae6u },
+    };
+    int done = 0;
+    for (unsigned i = 0; i < sizeof(kSites) / sizeof(kSites[0]); i++) {
+        uint32_t *site = (uint32_t *)(mod->text_base + kSites[i].offset);
+        if (*site != kSites[i].load)
+            continue;
+        uint32_t *stub = (uint32_t *)so_alloc_arena(mod, 0x01000000, (uintptr_t)site, 5 * sizeof(uint32_t));
+        if (!stub)
+            continue;
+        stub[0] = kSites[i].load;       /* vldr s15, [rN, #920] */
+        stub[1] = 0xed9f7a01u;          /* vldr s14, [pc, #4]   */
+        stub[2] = 0xee677a87u;          /* vmul.f32 s15, s15, s14 */
+        stub[3] = arm_branch((uintptr_t)&stub[3], (uintptr_t)(site + 1));
+        memcpy(&stub[4], &factor, sizeof(factor));
+        __builtin___clear_cache((char *)stub, (char *)(stub + 5));
+        *site = arm_branch((uintptr_t)site, (uintptr_t)stub);
+        __builtin___clear_cache((char *)site, (char *)(site + 1));
+        done++;
+    }
+    /*
+     * The same two functions have a second branch, taken in the fight camera, that skips the multiplier:
+     * x and z come straight from the vector and the height from two other fields (already in s15 / s19).
+     *
+     *     200034  vldr s13, [r4, #896] ; vstr [sp, #76] ; vldr s13, [r4, #904] ; vstr [sp, #84] ; vstr s15, [sp, #80]
+     *     208dd8  vldr s18, [r4, #896] ; vldr s16, [r4, #904]
+     *
+     * Each run is replaced by a stub doing the same with all three components times the factor.
+     */
+    static const uint32_t kStubA[] = {
+        0xed9f7a09u, 0xedd46ae0u, 0xee666a87u, 0xedcd6a13u, 0xedd46ae2u, 0xee666a87u, 0xedcd6a15u,
+        0xee677a87u, 0xedcd7a14u, 0xed947ad0u, 0 /* b 200048 */, 0 /* factor */,
+    };
+    static const uint32_t kStubB[] = {
+        0xed2d7b02u, 0xed9f7a06u, 0xee699a87u, 0xed949ae0u, 0xee299a07u, 0xed948ae2u, 0xee288a07u,
+        0xecbd7b02u, 0 /* b 208de0 */, 0 /* factor */,
+    };
+    static const struct { uint32_t offset, first, resume; const uint32_t *code; unsigned words; } kRaw[] = {
+        { 0x200034, 0xedd46ae0u, 0x200048, kStubA, 12 },
+        { 0x208dd8, 0xed949ae0u, 0x208de0, kStubB, 10 },
+    };
+    int raw = 0;
+    for (unsigned i = 0; i < 2; i++) {
+        uint32_t *site = (uint32_t *)(mod->text_base + kRaw[i].offset);
+        if (*site != kRaw[i].first)
+            continue;
+        unsigned n = kRaw[i].words;
+        uint32_t *stub = (uint32_t *)so_alloc_arena(mod, 0x01000000, (uintptr_t)site, n * sizeof(uint32_t));
+        if (!stub)
+            continue;
+        memcpy(stub, kRaw[i].code, n * sizeof(uint32_t));
+        stub[n - 2] = arm_branch((uintptr_t)&stub[n - 2], mod->text_base + kRaw[i].resume);
+        memcpy(&stub[n - 1], &factor, sizeof(factor));
+        __builtin___clear_cache((char *)stub, (char *)(stub + n));
+        *site = arm_branch((uintptr_t)site, (uintptr_t)stub);
+        __builtin___clear_cache((char *)site, (char *)(site + 1));
+        raw++;
+    }
+    trace("tweaks: camera: distance x%.2f at %d of 3 places, fight camera at %d of 2", factor, done, raw);
+}
+
+/*
+ * <PREFIX>_FIGHT_CAMERA=150: the fight camera keeps 1.5 times its distance.
+ *
+ * The camera has a mode (+456; 5 is the fight camera, named "CameraKombat") and that mode's update
+ * (+0x201e9c) works in spherical terms: the current distance at +624 is eased towards the wanted one at
+ * +628 by a helper called at +0x202474, with the wanted distance loaded just before:
+ *
+ *     20246c  vldr s1, [r4, #628]
+ *     202470  vmul.f32 s2, s18, s15        ; s2 is written here, so it is free one instruction earlier
+ *
+ * The load goes through a stub that multiplies it by the factor.
+ */
+static void install_fight_camera(so_module *mod, float factor)
+{
+    uint32_t *site = (uint32_t *)(mod->text_base + 0x20246c);
+    uint32_t *stub = *site == 0xedd40a9du
+        ? (uint32_t *)so_alloc_arena(mod, 0x01000000, (uintptr_t)site, 5 * sizeof(uint32_t)) : NULL;
+    if (!stub) {
+        trace("tweaks: fight camera: no distance load at +0x20246c, not the 1.1.6 library - left alone");
+        return;
+    }
+    stub[0] = 0xedd40a9du;          /* vldr s1, [r4, #628]  */
+    stub[1] = 0xed9f1a01u;          /* vldr s2, [pc, #4]    */
+    stub[2] = 0xee600a81u;          /* vmul.f32 s1, s1, s2  */
+    stub[3] = arm_branch((uintptr_t)&stub[3], (uintptr_t)(site + 1));
+    memcpy(&stub[4], &factor, sizeof(factor));
+    __builtin___clear_cache((char *)stub, (char *)(stub + 5));
+    *site = arm_branch((uintptr_t)site, (uintptr_t)stub);
+    __builtin___clear_cache((char *)site, (char *)(site + 1));
+    trace("tweaks: fight camera: distance x%.2f", factor);
+}
+
 void tdkr_tweaks_install(so_module *mod)
 {
+    long fight = port_getenv_long("FIGHT_CAMERA", 100);
+    if (fight != 100 && fight >= 50 && fight <= 400)
+        install_fight_camera(mod, fight / 100.0f);
+
+    long cam = port_getenv_long("CAMERA_DISTANCE", 100);
+    if (cam != 100 && cam >= 50 && cam <= 300)
+        install_camera_distance(mod, cam / 100.0f);
+
     if (port_getenv_long("FAST_CAS", 1))
         install_fast_cas(mod);
 

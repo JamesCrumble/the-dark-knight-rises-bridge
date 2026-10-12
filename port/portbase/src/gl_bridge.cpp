@@ -1433,6 +1433,82 @@ static void gb_glReadPixels(GLint x, GLint y, GLsizei width, GLsizei height, GLe
     }
 }
 
+/* ------------------------------------------------------------ HUD inset */
+
+/*
+ * <PREFIX>_HUD_INSET=N (percent of each side): the 2D layer is drawn N % in from every edge, so its
+ * buttons and the minimap clear a phone's rounded corners, while the 3D picture keeps the whole screen.
+ *
+ * Nothing in the GL stream names the interface, so it is recognised by state: a draw into the window
+ * (framebuffer 0), into the full-screen viewport, with the depth test off and blending on. Such a draw
+ * gets a viewport shrunk towards the centre; every other draw gets the viewport the game set. The same
+ * shrink is undone for touches in the port's input layer (game/input_bridge.cpp).
+ */
+static int    g_hud_inset = -1;
+static GLuint g_hud_fb;
+static bool   g_hud_depth, g_hud_blend, g_hud_vp_set, g_hud_vp_shrunk;
+static GLint  g_hud_vp[4];
+
+static void hud_viewport_for_draw(void)
+{
+    if (g_hud_inset <= 0 || !g_hud_vp_set)
+        return;
+    bool hud = g_hud_fb == 0 && !g_hud_depth && g_hud_blend && g_hud_vp[0] == 0 && g_hud_vp[1] == 0 &&
+               g_hud_vp[2] == port_getenv_long("WIDTH", 0) && g_hud_vp[3] == port_getenv_long("HEIGHT", 0);
+    if (hud == g_hud_vp_shrunk)
+        return;
+    g_hud_vp_shrunk = hud;
+    int ix = hud ? g_hud_vp[2] * g_hud_inset / 100 : 0, iy = hud ? g_hud_vp[3] * g_hud_inset / 100 : 0;
+    gb_glViewport(g_hud_vp[0] + ix, g_hud_vp[1] + iy, g_hud_vp[2] - 2 * ix, g_hud_vp[3] - 2 * iy);
+}
+
+static void gbf_glViewport(GLint x, GLint y, GLsizei w, GLsizei h)
+{
+    if (g_hud_inset < 0) {
+        long v = port_getenv_long("HUD_INSET", 0);
+        g_hud_inset = v > 0 && v <= 20 ? (int)v : 0;
+        if (g_hud_inset)
+            trace("gl bridge: the 2D layer is drawn %d%% in from the edges", g_hud_inset);
+    }
+    g_hud_vp[0] = x; g_hud_vp[1] = y; g_hud_vp[2] = w; g_hud_vp[3] = h;
+    g_hud_vp_set = true;
+    g_hud_vp_shrunk = false;
+    gb_glViewport(x, y, w, h);
+}
+
+static void gbf_glEnable(GLenum cap)
+{
+    if (cap == 0x0B71) g_hud_depth = true;
+    else if (cap == 0x0BE2) g_hud_blend = true;
+    gb_glEnable(cap);
+}
+
+static void gbf_glDisable(GLenum cap)
+{
+    if (cap == 0x0B71) g_hud_depth = false;
+    else if (cap == 0x0BE2) g_hud_blend = false;
+    gb_glDisable(cap);
+}
+
+static void gbf_glBindFramebuffer(GLenum target, GLuint fb)
+{
+    if (target == 0x8D40)
+        g_hud_fb = fb;
+    gb_glBindFramebuffer(target, fb);
+}
+
+static void gbf_glDrawArrays(GLenum mode, GLint first, GLsizei count)
+{
+    hud_viewport_for_draw();
+    gb_glDrawArrays(mode, first, count);
+}
+
+static void gbf_glDrawElements(GLenum mode, GLsizei count, GLenum type, const void *indices)
+{
+    hud_viewport_for_draw();
+    gb_glDrawElements(mode, count, type, indices);
+}
+
 /* ------------------------------------------------------------ resolver */
 
 struct Entry { const char *name; void *fn; };
@@ -1445,6 +1521,12 @@ static const Entry kEntries[] = {
     { "glBindTexture", (void *)gbf_glBindTexture },
     { "glUniform1i", (void *)gbf_glUniform1i },
     { "glUniform1f", (void *)gbf_glUniform1f },
+    { "glViewport", (void *)gbf_glViewport },
+    { "glEnable", (void *)gbf_glEnable },
+    { "glDisable", (void *)gbf_glDisable },
+    { "glBindFramebuffer", (void *)gbf_glBindFramebuffer },
+    { "glDrawArrays", (void *)gbf_glDrawArrays },
+    { "glDrawElements", (void *)gbf_glDrawElements },
     GB_SIMPLE_CALLS(GB_ENTRY)
 #undef GB_ENTRY
 #define E(n) { #n, (void *)gb_##n },

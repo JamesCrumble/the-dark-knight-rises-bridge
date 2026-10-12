@@ -646,6 +646,20 @@ bool android_input_inject_touch(int action, int x, int y, int id)
         trace("input: touch %d at %d,%d id %d (menu=%d)", action, x, y, id,
               (int)tdkr_is_main_menu());
     }
+    /* <PREFIX>_HUD_INSET draws the 2D layer shrunk towards the centre (portbase/src/gl_bridge.cpp);
+     * a finger on a button as drawn is that much farther out in the coordinates the engine knows. */
+    static long inset = -1;
+    if (inset < 0) {
+        inset = port_getenv_long("HUD_INSET", 0);
+        if (inset < 0 || inset > 20)
+            inset = 0;
+    }
+    if (inset > 0) {
+        x = (int)((x - g_width * inset / 100.0f) * 100.0f / (100 - 2 * inset));
+        y = (int)((y - g_height * inset / 100.0f) * 100.0f / (100 - 2 * inset));
+        x = x < 0 ? 0 : x >= g_width ? g_width - 1 : x;
+        y = y < 0 ? 0 : y >= g_height ? g_height - 1 : y;
+    }
     g_touch_event(g_env, NULL, action, x, y, id);
     return true;
 }
