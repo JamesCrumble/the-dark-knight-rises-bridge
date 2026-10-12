@@ -1,0 +1,27 @@
+TDKR Bridge - установка
+========================
+
+The Dark Knight Rises (Gameloft, v1.1.6, только 32-бит) на 64-битном телефоне через qemu-user и проброс GLES на GPU.
+Файлы игры в комплект не входят: нужны ваши APK версии 1.1.6 и кэш к ней.
+
+1. Установить TDKR-Bridge-<версия>.apk (приложение "The Dark Knight Rises", пакет com.jamescrumble.tdkr).
+
+2. Положить файлы игры (по adb или любым файловым менеджером) в папку
+   /sdcard/Android/data/com.jamescrumble.tdkr/files/ :
+
+       <оригинальный APK игры 1.1.6>.apk
+       com.gameloft.android.AMAZ.GloftKRAS/files/data/...        (распакованный кэш)
+       com.gameloft.android.AMAZ.GloftKRAS/files/textures/...
+
+   То есть папка com.gameloft.android.AMAZ.GloftKRAS из архива кэша кладётся целиком.
+   Подойдёт и вариант, когда папки data и textures лежат прямо в .../files/.
+
+   Пример:
+       adb push "The Dark Knight Rises v1.1.6.apk" /sdcard/Android/data/com.jamescrumble.tdkr/files/
+       adb push com.gameloft.android.AMAZ.GloftKRAS /sdcard/Android/data/com.jamescrumble.tdkr/files/
+
+3. Открыть приложение: сначала появятся настройки (разрешение, лимит кадров, звук, ядра),
+   кнопка "Играть" запускает игру. Первый запуск дольше: распаковывается sysroot (~100 МБ).
+
+Исходники - TDKR-Bridge-<версия>-src.zip (сборка описана в README.md).
+Контрольные суммы - SHA256SUMS.
