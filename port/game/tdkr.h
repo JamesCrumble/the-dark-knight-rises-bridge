@@ -26,7 +26,7 @@ so_module *tdkr_module(void);
 
 /* Engine settings forced over the device profile. tweaks.cpp */
 void tdkr_tweaks_install(so_module *mod);
-/* Once per frame: undoes the scheduler's clamp on the main thread. tweaks.cpp */
+/* Once per frame: the frame-rate target and the scheduler's clamp on the main thread. tweaks.cpp */
 void tdkr_sched_tick(long frames);
 
 /*

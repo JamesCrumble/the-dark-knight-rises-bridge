@@ -333,6 +333,8 @@ final class GameProcess {
         env.put("TDKR_GL_CMD", glCmd.getPath());
         env.put("TDKR_GL_REPLY", glReply.getPath());
         env.put("TDKR_LANG", java.util.Locale.getDefault().getLanguage());
+        // The engine has a frame limiter of its own, fixed at 60; it follows the menu's frame limit.
+        env.put("TDKR_TARGET_FPS", SettingsActivity.load(ctx).getOrDefault("FPS_LIMIT", "60"));
         env.put("TDKR_WIDTH", String.valueOf(renderW));
         env.put("TDKR_HEIGHT", String.valueOf(renderH));
         env.put("TDKR_FB_PROBE_INTERVAL", "0");
@@ -375,7 +377,8 @@ final class GameProcess {
         // cores. The frequency limiter caps clusters differently from moment to moment, and the scheduler keeps
         // moving the game's one busy thread onto whichever is free - often a capped one.
         String mask = readText(new File(logFile.getParentFile(), "cpu_mask.txt")).trim();
-        if ("1".equals(SettingsActivity.load(ctx).get("CPU_PRIME"))) mask = "c0";
+        // On by default: in the first session the game's main thread sat on the middle cores at 1.4-1.8 GHz.
+        if ("1".equals(SettingsActivity.load(ctx).getOrDefault("CPU_PRIME", "1"))) mask = "c0";
         if (diag.exists()) mask = "";
         if (mask.matches("[0-9a-fA-F]{1,4}")) {
             b.command().add(0, "/system/bin/taskset");

@@ -3,7 +3,8 @@
 
 guest_prof.py <log> [first_report [last_report]]
 
-Maps sampled guest PCs to functions of libTDKR_neon.so (text_base from the log) and of the port
+Maps sampled guest PCs to functions of libKRAS.so (text_base from the log), of glibc and libpthread in
+the armhf sysroot (bases derived from the logged addresses of memset and pthread_mutex_lock) and of the port
 executable build/tdkr (base derived from the logged address of main()); everything else is
 reported by 64 KB region (libc/SDL/Mesa in the armhf sysroot).
 """
@@ -24,7 +25,7 @@ def funcs(path):
     secs = [struct.unpack_from('<IIIIIIIIII', d, shoff + i * shentsize) for i in range(shnum)]
     out = []
     for s in secs:
-        if s[1] != 2:
+        if s[1] not in (2, 11):     # .symtab, or .dynsym in a stripped library
             continue
         st = secs[s[6]]
         for i in range(s[5] // 16):
@@ -57,7 +58,7 @@ tb = re.search(r'text_base=0x([0-9a-f]+) size=(\d+)', '\n'.join(log))
 mb = re.search(r'port main\(\) is at 0x([0-9a-f]+)', '\n'.join(log))
 mods = []
 if tb:
-    mods.append(('game', Mod(ROOT + '/tdkrdata/lib/armeabi-v7a/libTDKR_neon.so', int(tb.group(1), 16), int(tb.group(2)))))
+    mods.append(('game', Mod(ROOT + '/tdkrdata/lib/armeabi-v7a/libKRAS.so', int(tb.group(1), 16), int(tb.group(2)))))
 if mb:
     nf = funcs(ROOT + '/port/build/tdkr')
     m = [x for x in nf if x[2] == 'main']
@@ -65,7 +66,21 @@ if mb:
         base = int(mb.group(1), 16) - m[0][0]
         mods.append(('port', Mod(ROOT + '/port/build/tdkr', base, 0x2000000)))
 
-reports = [l for l in log if l.startswith('QEMU_GUEST_PROF:')]
+SYSROOT = ROOT + '/port/android/build/sysroot/lib/arm-linux-gnueabihf/'
+la = re.search(r'libc addrs: .*memset=0x([0-9a-f]+).*mutex_lock=0x([0-9a-f]+)', '\n'.join(log))
+if la:
+    for tag, lib, sym, addr in (('libc', 'libc.so.6', 'memset', int(la.group(1), 16)),
+                                ('pthread', 'libpthread.so.0', 'pthread_mutex_lock', int(la.group(2), 16))):
+        try:
+            lf = funcs(SYSROOT + lib)
+        except OSError:
+            continue
+        m = [x for x in lf if x[2] == sym]
+        if m:
+            mods.append((tag, Mod(SYSROOT + lib, (addr & ~1) - m[0][0], max(x[0] + x[1] for x in lf) + 4096)))
+
+reports = [l for l in log if 'QEMU_GUEST_PROF:' in l]
+reports = [l[l.index('QEMU_GUEST_PROF:'):] for l in reports]
 lo = int(sys.argv[2]) if len(sys.argv) > 2 else 0
 hi = int(sys.argv[3]) if len(sys.argv) > 3 else len(reports)
 agg = collections.Counter()

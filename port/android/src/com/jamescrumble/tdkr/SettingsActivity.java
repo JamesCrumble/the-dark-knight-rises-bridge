@@ -99,7 +99,7 @@ public final class SettingsActivity extends Activity {
         col.addView(section("Производительность"));
         col.addView(choice("Кадров «в полёте»", "TDKR_GL_INFLIGHT", new int[] { 1, 2, 3 }, 2, "",
                 "Сколько кадров игра готовит вперёд, пока телефон рисует предыдущий. 2 — плавнее, 1 — меньше задержка."));
-        col.addView(toggle("Только быстрые ядра (6-7)", "CPU_PRIME", false,
+        col.addView(toggle("Только быстрые ядра (6-7)", "CPU_PRIME", true,
                 "Держит игру на двух самых быстрых ядрах: система реже переносит главный поток на медленные."));
         col.addView(toggle("Подсказки производительности системе (ADPF)", "PERF_HINT", false,
                 "Сообщает Android время кадра."));

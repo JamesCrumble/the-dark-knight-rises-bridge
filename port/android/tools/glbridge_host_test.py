@@ -143,6 +143,18 @@ def main():
             errors.append("short payload for op %d" % op)
             break
         total += length
+        if op == 250:   # OP_Q_PROGRAM_INFO (guest-side op, not in the generated table): a linked program in one reply
+            prog = struct.unpack_from("<i", pay, 0)[0]
+            attrs, unis = reflect.get(prog, ([], []))
+            names = [[(nm + ("[0]" if sz > 1 else "")).encode() for nm, ty, sz in lst] for lst in (attrs, unis)]
+            out = struct.pack("<6i", 1, 0, len(attrs), max([len(n) + 1 for n in names[0]] + [1]),
+                              len(unis), max([len(n) + 1 for n in names[1]] + [1]))
+            for lst, nms in ((attrs, names[0]), (unis, names[1])):
+                for loc, ((nm, ty, sz), nb) in enumerate(zip(lst, nms)):
+                    out += struct.pack("<4i", sz, ty, loc, len(nb)) + nb + b"\0" * (-len(nb) % 4)
+            ops["OP_Q_PROGRAM_INFO"] += 1
+            reply(out)
+            continue
         name = OPS.get(op)
         if name is None:
             errors.append("unknown op %d" % op)

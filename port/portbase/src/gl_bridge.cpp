@@ -78,6 +78,15 @@ static uint64_t now_ns()
     return (uint64_t)ts.tv_sec * 1000000000ull + (uint64_t)ts.tv_nsec;
 }
 
+/* CPU time of the calling thread: what the game's own code cost, whatever it then waited for. */
+static uint64_t thread_cpu_ns()
+{
+    struct timespec ts;
+    if (clock_gettime(CLOCK_THREAD_CPUTIME_ID, &ts) != 0)
+        return 0;
+    return (uint64_t)ts.tv_sec * 1000000000ull + (uint64_t)ts.tv_nsec;
+}
+
 /*
  * The engine makes every GL call from its render thread, and under emulation
  * a mutex per call (thousands per frame) is a real cost. So the first thread
@@ -1498,7 +1507,7 @@ extern "C" int gl_bridge_init(void)
  * of it spent encoding GL calls, and the wait for the host to present. Logged
  * as averages every 120 frames.
  */
-static uint64_t g_step_ns, g_swap_ns, g_frame_t0;
+static uint64_t g_step_ns, g_swap_ns, g_frame_t0, g_cpu_ns, g_frame_c0;
 static long     g_prof_frames;
 
 /*
@@ -1541,6 +1550,8 @@ extern "C" void gl_bridge_profile_step(int begin)
     if (begin) {
         memset(&g_port_frame, 0, sizeof(g_port_frame));
         g_frame_t0 = now_ns();
+        if (g_profile > 0)
+            g_frame_c0 = thread_cpu_ns();
         return;
     }
     uint64_t step = now_ns() - g_frame_t0;
@@ -1548,11 +1559,12 @@ extern "C" void gl_bridge_profile_step(int begin)
     if (g_profile <= 0)
         return;
     g_step_ns += step;
+    g_cpu_ns += thread_cpu_ns() - g_frame_c0;
     if (++g_prof_frames % 120 == 0) {
         double n = 120.0;
-        trace("glprof: step %.1f ms (bridge %.1f ms, %.0f calls), swap wait %.1f ms per frame",
-              g_step_ns / n / 1e6, g_bridge_ns / n / 1e6, g_bridge_calls / n, g_swap_ns / n / 1e6);
-        g_step_ns = g_bridge_ns = g_bridge_calls = g_swap_ns = 0;
+        trace("glprof: step %.1f ms, cpu %.1f ms (bridge %.1f ms, %.0f calls), swap wait %.1f ms per frame",
+              g_step_ns / n / 1e6, g_cpu_ns / n / 1e6, g_bridge_ns / n / 1e6, g_bridge_calls / n, g_swap_ns / n / 1e6);
+        g_step_ns = g_cpu_ns = g_bridge_ns = g_bridge_calls = g_swap_ns = 0;
     }
 }
 

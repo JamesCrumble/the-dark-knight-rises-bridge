@@ -23,3 +23,5 @@ __pycache__/
 *.apk
 *.idsig
 release.pass
+# Saves and scratch files of tools/bench_pc.py (made by the game)
+/bench/

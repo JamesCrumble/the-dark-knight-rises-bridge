@@ -5,6 +5,8 @@
  *                         calls the kernel's cmpxchg helper at 0xffff0fc0 for its __sync_* functions,
  *                         which qemu-user emulates by trapping out of translated code on every call.
  *                         Each literal holding that address is pointed at a small ldrex/strex routine.
+ *   <PREFIX>_TARGET_FPS, <PREFIX>_FRAME_YIELD   the engine's frame limiter, see install_frame_limit.
+ *   <PREFIX>_SLEEP_TRACE=1   who calls glf::Thread::Sleep, see sleep_trace_hook.
  *   <PREFIX>_UCLAMP=0     leave the scheduler's clamp on the main thread alone (see tdkr_sched_tick).
  *   <PREFIX>_UCLAMP_MIN=0..1024 also ask for at least this much (0 by default).
  */
@@ -55,10 +57,134 @@ static void install_fast_cas(so_module *mod)
     trace("tweaks: kuser cmpxchg literal replaced at %zu places (routine %p)", hits, page);
 }
 
+/*
+ * <PREFIX>_SLEEP_TRACE=1: who calls glf::Thread::Sleep, for how long and from which thread.
+ * The function is three instructions (ms * 1000, tail call to usleep), so it is replaced outright.
+ * One line per distinct call site, then a count line every 600 calls.
+ */
+static so_module *g_trace_mod;
+
+static void sleep_trace_hook(unsigned ms)
+{
+    static struct { uintptr_t lr; unsigned calls; unsigned long total_ms; } sites[32];
+    static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
+    static unsigned long calls;
+    uintptr_t lr = (uintptr_t)__builtin_return_address(0) - g_trace_mod->text_base;
+
+    pthread_mutex_lock(&lock);
+    int slot = -1;
+    for (int i = 0; i < 32; i++) {
+        if (sites[i].lr == lr || !sites[i].lr) {
+            slot = i;
+            break;
+        }
+    }
+    if (slot >= 0) {
+        if (!sites[slot].lr) {
+            sites[slot].lr = lr;
+            trace("sleep trace: new call site +0x%lx: %u ms, thread %ld%s", (unsigned long)lr, ms,
+                  (long)syscall(SYS_gettid), syscall(SYS_gettid) == getpid() ? " (main)" : "");
+        }
+        sites[slot].calls++;
+        sites[slot].total_ms += ms;
+    }
+    if (++calls % 600 == 0) {
+        for (int i = 0; i < 32 && sites[i].lr; i++) {
+            if (sites[i].calls)
+                trace("sleep trace: +0x%lx: %u calls, %lu ms in total", (unsigned long)sites[i].lr,
+                      sites[i].calls, sites[i].total_ms);
+            sites[i].calls = 0;
+            sites[i].total_ms = 0;
+        }
+    }
+    pthread_mutex_unlock(&lock);
+    usleep(ms * 1000u);
+}
+
+/*
+ * The engine's own frame limiter.
+ *
+ * The application's per-frame method (+0x40d6e0 in the 1.1.6 library) ends like this:
+ *
+ *     40d834  mov r0, #1
+ *     40d838  bl  glf::Thread::Sleep        ; 1 ms, every frame, whatever the frame cost
+ *     ...     remaining = frame_start + budget - time_after_update
+ *     40d874  b   glf::Thread::Sleep        ; (int)remaining ms, when positive
+ *
+ * The budget is a float in ms at this+0x11f10, kept next to the frame rate it was derived from (an int
+ * at this+0x11f0c): 60 from the constructor and from six call sites of a small setter, 1000 from one
+ * more. So an idle menu frame takes 1 + 16 + its own half a millisecond - 56 frames a second - and
+ * nothing the wrapper's frame limit says changes that.
+ *
+ *   <PREFIX>_TARGET_FPS=N    wherever the game has set itself 60, it gets N instead (the wrapper passes
+ *                            its frame limit). Applied once a frame from tdkr_sched_tick rather than by
+ *                            patching the setter, so the constructor's own 60 is caught as well; the
+ *                            other value the game uses (1000) is left alone.
+ *   <PREFIX>_FRAME_YIELD=1   keep the unconditional 1 ms sleep (dropped by default: under qemu-user
+ *                            every guest thread is a host thread and needs no yielding to).
+ *
+ * The sleep is found by offset and the two fields by layout, so each is checked before it is touched:
+ * the instruction pair for one, "the rate is 60 and the budget is 1000/60" for the other.
+ */
+static int   g_target_fps;
+static void *(*g_app_instance)(void);
+
+static void frame_limit_tick(void)
+{
+    if (g_target_fps <= 0 || !g_app_instance)
+        return;
+    char *app = (char *)g_app_instance();
+    if (!app)
+        return;
+    int   *rate   = (int *)(app + 0x11f0c);
+    float *budget = (float *)(app + 0x11f10);
+    if (*rate != 60 || fabsf(*budget - 1000.0f / 60.0f) > 0.01f)
+        return;
+    *rate   = g_target_fps;
+    *budget = 1000.0f / (float)g_target_fps;
+    static int announced;
+    if (announced < 4) {
+        announced++;
+        trace("tweaks: frame limiter: the game's 60 fps target set to %d", g_target_fps);
+    }
+}
+
+static void install_frame_limit(so_module *mod)
+{
+    long fps = port_getenv_long("TARGET_FPS", 0);
+    if (fps >= 20 && fps <= 240 && fps != 60) {
+        g_app_instance = (void *(*)(void))so_symbol(mod, "_ZN3glf3App11GetInstanceEv");
+        if (g_app_instance)
+            g_target_fps = (int)fps;
+        else
+            trace("tweaks: frame limiter: no glf::App::GetInstance in this library - target left at 60");
+    }
+
+    if (!port_getenv_long("FRAME_YIELD", 0)) {
+        uint32_t *yield = (uint32_t *)(mod->text_base + 0x40d834);
+        /* mov r0, #1 ; bl <...> */
+        if (yield[0] == 0xe3a00001u && (yield[1] & 0xff000000u) == 0xeb000000u) {
+            yield[1] = 0xe1a00000u;     /* nop */
+            __builtin___clear_cache((char *)&yield[1], (char *)&yield[2]);
+            trace("tweaks: frame limiter: the 1 ms sleep of every frame is dropped");
+        } else {
+            trace("tweaks: frame limiter: no per-frame sleep at +0x40d834, not the 1.1.6 library - left alone");
+        }
+    }
+}
+
 void tdkr_tweaks_install(so_module *mod)
 {
     if (port_getenv_long("FAST_CAS", 1))
         install_fast_cas(mod);
+
+    install_frame_limit(mod);
+
+    if (port_getenv_long("SLEEP_TRACE", 0)) {
+        g_trace_mod = mod;
+        hook_symbol(mod, "_ZN3glf6Thread5SleepEj", (uintptr_t)sleep_trace_hook, 1);
+        trace("tweaks: glf::Thread::Sleep is traced");
+    }
 }
 
 /*
@@ -94,6 +220,8 @@ static int set_uclamp(uint32_t lo)
 
 void tdkr_sched_tick(long frames)
 {
+    frame_limit_tick();
+
     static int state = -1;      /* -1 not tried, 0 off, 1 working */
     static uint32_t lo;
 
