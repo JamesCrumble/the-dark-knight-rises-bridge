@@ -87,6 +87,8 @@ GPU телефона. Способ тот же, что в NOVA3 Bridge, Shadowgu
 - **qemu** (`qemu/`): QEMU 11.1.2 с патчами из NOVA3 Bridge (вариант F).
 
 История версий — в [CHANGELOG.md](CHANGELOG.md). Чем эта игра отличается от N.O.V.A. 3 и что из этого следует для порта — в [PROJECT_STATE.md](PROJECT_STATE.md).
+Пошаговый разбор — что было видно, как нашли причину, что исправили — в
+[docs/PORTING_GUIDE.md](docs/PORTING_GUIDE.md) ([English](docs/PORTING_GUIDE.en.md)).
 Архитектура обёртки — в [port/android/README.md](port/android/README.md).
 
 ## Производительность
