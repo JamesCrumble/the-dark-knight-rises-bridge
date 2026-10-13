@@ -6,19 +6,21 @@ The Dark Knight Rises (Gameloft, v1.1.6, только 32-бит) на 64-бит�
 
 1. Установить TDKR-Bridge-<версия>.apk (приложение "The Dark Knight Rises", пакет com.jamescrumble.tdkr).
 
-2. Положить файлы игры (по adb или любым файловым менеджером) в папку
-   /sdcard/Android/data/com.jamescrumble.tdkr/files/ :
+2. Запустить приложение один раз и закрыть: появится папка
 
-       <оригинальный APK игры 1.1.6>.apk
-       com.gameloft.android.AMAZ.GloftKRAS/files/data/...        (распакованный кэш)
-       com.gameloft.android.AMAZ.GloftKRAS/files/textures/...
+   /sdcard/Android/data/com.jamescrumble.tdkr/files/
 
-   То есть папка com.gameloft.android.AMAZ.GloftKRAS из архива кэша кладётся целиком.
-   Подойдёт и вариант, когда папки data и textures лежат прямо в .../files/.
+   Положить в неё два файла как есть (по кабелю с компьютера или файловым менеджером):
 
-   Пример:
-       adb push "The Dark Knight Rises v1.1.6.apk" /sdcard/Android/data/com.jamescrumble.tdkr/files/
-       adb push com.gameloft.android.AMAZ.GloftKRAS /sdcard/Android/data/com.jamescrumble.tdkr/files/
+       <оригинальный APK игры 1.1.6>.apk          (не устанавливать, просто файлом)
+       <zip-архив с кэшем игры>.zip            (не распаковывать)
+
+   Имена файлов не важны, важны расширения. Архив нужен именно zip; приложение распакует его само
+   при первом запуске игры.
+
+   Вместо архива можно положить в ту же папку уже распакованную папку com.gameloft.android.AMAZ.GloftKRAS
+   (внутри files/ лежат data и textures). Если копировали её по adb, откройте папки приложению:
+       adb shell "find /sdcard/Android/data/com.jamescrumble.tdkr -type d -exec chmod 2777 {} +"
 
 3. Открыть приложение: сначала появятся настройки (разрешение, лимит кадров, звук, ядра),
    кнопка "Играть" запускает игру. Первый запуск дольше: распаковывается sysroot (~100 МБ).

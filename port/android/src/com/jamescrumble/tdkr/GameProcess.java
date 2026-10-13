@@ -231,6 +231,14 @@ final class GameProcess {
 
         // The cache (data/, textures/) stays where the player put it; the port reads it through game/files.
         File data = external == null ? null : findData(external);
+        if (data == null && external != null) {
+            // Simplest for the player: the cache archive as a zip next to the game APK, unpacked here once.
+            File zip = firstWithSuffix(external, ".zip");
+            if (zip != null) {
+                extractCache(zip, external);
+                data = findData(external);
+            }
+        }
         if (data == null) {
             File locked = external == null ? null : firstUnreadable(new File(external, GAME_PACKAGE));
             if (locked != null) {
@@ -243,7 +251,8 @@ final class GameProcess {
             new File(external, GAME_PACKAGE + "/files/data/options/custom").mkdirs();
             new File(external, GAME_PACKAGE + "/files/textures").mkdirs();
             new File(external, GAME_PACKAGE + "/files/welcome").mkdirs();
-            throw new IOException("Не найден кэш игры (папки data и textures).\nРаспакуйте архив кэша и положите содержимое папки\n"
+            throw new IOException("Не найден кэш игры (папки data и textures).\nПоложите zip-архив с кэшем рядом с APK игры, в папку:\n" + where
+                    + "\nЛибо распакуйте архив сами и положите содержимое папки\n"
                     + GAME_PACKAGE + "/files\nв уже созданную папку:\n" + where + "/" + GAME_PACKAGE + "/files");
         }
         File link = new File(game, "files");
@@ -548,6 +557,47 @@ final class GameProcess {
             out.write((line + "\n").getBytes("US-ASCII"));
         } catch (IOException ignored) {
         }
+    }
+
+    /**
+     * A cache zip into dir with its folders as they are in the archive. A main.*.obb inside is skipped: where
+     * an archive carries one, it is the same data once more in a single file.
+     */
+    private void extractCache(File zip, File dir) throws IOException {
+        String base = dir.getCanonicalPath() + File.separator;
+        long total = 0, done = 0, shown = -1;
+        int count = 0;
+        try (ZipFile z = new ZipFile(zip)) {
+            java.util.Enumeration<? extends ZipEntry> en = z.entries();
+            while (en.hasMoreElements()) {
+                ZipEntry e = en.nextElement();
+                if (!e.isDirectory() && !e.getName().endsWith(".obb")) total += Math.max(0, e.getSize());
+            }
+            en = z.entries();
+            byte[] buf = new byte[1 << 20];
+            while (en.hasMoreElements()) {
+                ZipEntry e = en.nextElement();
+                String n = e.getName();
+                if (e.isDirectory() || n.endsWith(".obb") || n.endsWith(".url")) continue;
+                File out = new File(dir, n);
+                if (!out.getCanonicalPath().startsWith(base)) throw new IOException("bad zip entry " + n);
+                File parent = out.getParentFile();
+                if (parent != null && !parent.isDirectory() && !parent.mkdirs()) throw new IOException("mkdir " + parent);
+                try (InputStream in = z.getInputStream(e); OutputStream os = new FileOutputStream(out)) {
+                    for (int r; (r = in.read(buf)) > 0; ) {
+                        os.write(buf, 0, r);
+                        done += r;
+                        long pct = total > 0 ? done * 100 / total : 0;
+                        if (pct != shown) {
+                            shown = pct;
+                            listener.onStatus("Распаковка кэша: " + pct + "%");
+                        }
+                    }
+                }
+                count++;
+            }
+        }
+        if (count == 0) throw new IOException("В zip нет файлов кэша\nНужен кэш игры 1.1.6: " + zip.getName());
     }
 
     private static File firstWithSuffix(File dir, String suffix) {

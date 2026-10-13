@@ -31,15 +31,18 @@ GPU телефона. Способ тот же, что в NOVA3 Bridge, Shadowgu
 ## Установка
 
 1. Установите `TDKR-Bridge-<версия>.apk` со страницы Releases (пакет `com.jamescrumble.tdkr`).
-2. Положите в `/sdcard/Android/data/com.jamescrumble.tdkr/files/`:
-   - оригинальный APK игры 1.1.6;
-   - папку `com.gameloft.android.AMAZ.GloftKRAS` из распакованного архива кэша (внутри `files/data`,
-     `files/textures`).
-3. Если копировали по adb, откройте папки приложению (adb создаёт их от имени `shell`):
-   `adb shell "find /sdcard/Android/data/com.jamescrumble.tdkr/files/com.gameloft.android.AMAZ.GloftKRAS -type d -exec chmod 2777 {} +"`
+2. Запустите приложение один раз и закройте: появится папка `/sdcard/Android/data/com.jamescrumble.tdkr/files/`.
+3. Положите в неё два файла как есть: оригинальный APK игры 1.1.6 и zip-архив с её кэшем. Имена не важны.
+   Приложение само распакует архив при первом запуске игры. Архив должен быть именно zip: кэш в формате 7z
+   нужно сначала перепаковать в zip либо распаковать вручную (см. ниже).
 4. Откройте приложение, при необходимости поменяйте настройки и нажмите «Играть».
 
-Из папки проекта шаги 2–3 делает `tools/push_data.sh`. Если чего-то не хватает, причина пишется на экране и в
+Распаковка вручную: папку `com.gameloft.android.AMAZ.GloftKRAS` из архива кэша (внутри `files/data`,
+`files/textures`) положить в ту же папку целиком. Если копировали по adb, откройте папки приложению
+(adb создаёт их от имени `shell`):
+`adb shell "find /sdcard/Android/data/com.jamescrumble.tdkr/files/com.gameloft.android.AMAZ.GloftKRAS -type d -exec chmod 2777 {} +"`
+
+Из папки проекта ручную раскладку делает `tools/push_data.sh`. Если чего-то не хватает, причина пишется на экране и в
 `tdkr.log` в папке с файлами игры. Первый запуск дольше: распаковывается sysroot (~100 МБ).
 
 ## Настройки
