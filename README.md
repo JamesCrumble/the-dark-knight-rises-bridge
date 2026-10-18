@@ -31,16 +31,19 @@ GPU телефона. Способ тот же, что в NOVA3 Bridge, Shadowgu
 ## Установка
 
 1. Установите `TDKR-Bridge-<версия>.apk` со страницы Releases (пакет `com.jamescrumble.tdkr`).
-2. Запустите приложение один раз и закройте: появится папка `/sdcard/Android/data/com.jamescrumble.tdkr/files/`.
-3. Положите в неё два файла как есть: оригинальный APK игры 1.1.6 и zip-архив с её кэшем. Имена не важны.
+2. Запустите приложение и разрешите доступ ко всем файлам (оно предложит само): будет создана папка `/sdcard/BridgeGames/com.jamescrumble.tdkr/`.
+3. Положите в неё два файла как есть (подойдёт и старая `Android/data/com.jamescrumble.tdkr/files/`, читаются обе папки): оригинальный APK игры 1.1.6 и zip-архив с её кэшем. Имена не важны.
    Приложение само распакует архив при первом запуске игры. Архив должен быть именно zip: кэш в формате 7z
    нужно сначала перепаковать в zip либо распаковать вручную (см. ниже).
 4. Откройте приложение, при необходимости поменяйте настройки и нажмите «Играть».
 
+**Папка BridgeGames.** С доступом ко всем файлам она основная: из `Android/data/com.jamescrumble.tdkr/files/` туда сами переезжают все файлы
+(APK, кэш, настройки, лог). Читаются обе папки, без доступа всё работает с папкой в `Android/data`. Сохранения игра хранит внутри папки кэша, они переезжают вместе с ней. Как это устроено и как перенести в другой порт: [docs/STORAGE.md](docs/STORAGE.md).
+
 Распаковка вручную: папку `com.gameloft.android.AMAZ.GloftKRAS` из архива кэша (внутри `files/data`,
 `files/textures`) положить в ту же папку целиком. Если копировали по adb, откройте папки приложению
 (adb создаёт их от имени `shell`):
-`adb shell "find /sdcard/Android/data/com.jamescrumble.tdkr/files/com.gameloft.android.AMAZ.GloftKRAS -type d -exec chmod 2777 {} +"`
+`adb shell "find /sdcard/BridgeGames/com.jamescrumble.tdkr/com.gameloft.android.AMAZ.GloftKRAS -type d -exec chmod 2777 {} +"`
 
 Из папки проекта ручную раскладку делает `tools/push_data.sh`. Если чего-то не хватает, причина пишется на экране и в
 `tdkr.log` в папке с файлами игры. Первый запуск дольше: распаковывается sysroot (~100 МБ).

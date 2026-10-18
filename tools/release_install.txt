@@ -6,11 +6,14 @@ The Dark Knight Rises (Gameloft, v1.1.6, только 32-бит) на 64-бит�
 
 1. Установить TDKR-Bridge-<версия>.apk (приложение "The Dark Knight Rises", пакет com.jamescrumble.tdkr).
 
-2. Запустить приложение один раз и закрыть: появится папка
+2. Запустить приложение и разрешить доступ ко всем файлам (приложение предложит само). Оно создаст папку
 
-   /sdcard/Android/data/com.jamescrumble.tdkr/files/
+   /sdcard/BridgeGames/com.jamescrumble.tdkr/
 
-   Положить в неё два файла как есть (по кабелю с компьютера или файловым менеджером):
+   Положить в неё два файла как есть (по кабелю с компьютера или файловым менеджером).
+   Подойдёт и старая папка /sdcard/Android/data/com.jamescrumble.tdkr/files/ : читаются обе, а при выданном
+   доступе всё из неё переносится в BridgeGames само. Без доступа приложение работает с папкой в Android/data.
+
 
        <оригинальный APK игры 1.1.6>.apk          (не устанавливать, просто файлом)
        <zip-архив с кэшем игры>.zip            (не распаковывать)
@@ -20,7 +23,7 @@ The Dark Knight Rises (Gameloft, v1.1.6, только 32-бит) на 64-бит�
 
    Вместо архива можно положить в ту же папку уже распакованную папку com.gameloft.android.AMAZ.GloftKRAS
    (внутри files/ лежат data и textures). Если копировали её по adb, откройте папки приложению:
-       adb shell "find /sdcard/Android/data/com.jamescrumble.tdkr -type d -exec chmod 2777 {} +"
+       adb shell "find /sdcard/BridgeGames/com.jamescrumble.tdkr -type d -exec chmod 2777 {} +"
 
 3. Открыть приложение: сначала появятся настройки (разрешение, лимит кадров, звук, ядра),
    кнопка "Играть" запускает игру. Первый запуск дольше: распаковывается sysroot (~100 МБ).
