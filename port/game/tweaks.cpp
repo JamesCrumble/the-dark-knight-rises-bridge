@@ -7,6 +7,8 @@
  *                         Each literal holding that address is pointed at a small ldrex/strex routine.
  *   <PREFIX>_TARGET_FPS, <PREFIX>_FRAME_YIELD   the engine's frame limiter, see install_frame_limit.
  *   <PREFIX>_SLEEP_TRACE=1   who calls glf::Thread::Sleep, see sleep_trace_hook.
+ *   <PREFIX>_MONEY_INFINITE=1, <PREFIX>_MONEY_RESTORE=N   the credits balance, see money_tick.
+ *   <PREFIX>_STAT_TRACE=1 log the player's counters (ids 0-5) every 5 seconds, for finding which is which.
  *   <PREFIX>_UCLAMP=0     leave the scheduler's clamp on the main thread alone (see tdkr_sched_tick).
  *   <PREFIX>_UCLAMP_MIN=0..1024 also ask for at least this much (0 by default).
  */
@@ -289,6 +291,120 @@ static void install_fight_camera(so_module *mod, float factor)
     trace("tweaks: fight camera: distance x%.2f", factor);
 }
 
+
+/*
+ * <PREFIX>_MONEY_INFINITE=1: the credits balance is kept at kMoneyInfinite.
+ * <PREFIX>_MONEY_RESTORE=N:  once, when the balance is found at kMoneyInfinite (the save was written with
+ *                            the option on) and the option is off, it is set to N.
+ *
+ * The player's counters are one object (found as game singleton -> +236 -> +176 -> +1516, the chain of
+ * the small accessor at +0x4289ec) that keeps every counter int scrambled: 16 slots per counter, one of them
+ * the real value, which one is picked at random on every write. The game reads a counter through
+ * +0x230f44 (object, id) and writes it through +0x22f258 (object, id, value); nothing else touches the slots,
+ * so both are called as they are rather than the layout decoded. Counter 2 is the credits: the shop's
+ * "wayneCurrency" field reads it, and the two functions that pay out (+0x27e134) and charge (the same one,
+ * negative amount) write it, counter 3 beside it being the sum earned. Counters 0 and 4 are something
+ * else (points of some kind, not touched here).
+ *
+ * Done once per frame from the main loop, on the thread that runs the game's step: a purchase takes the
+ * balance down during a frame and the next frame puts it back. Reading costs two xors, writing is
+ * sixteen random numbers, so the write is made only when the value differs.
+ *
+ * Every address is checked against the instructions the 1.1.6 library has there before it is used.
+ */
+static const int kMoneyId = 2;
+static const int kMoneyInfinite = 9999999;
+
+static uintptr_t g_money_slot;
+static int  (*g_get_stat)(void *, int);
+static void (*g_set_stat)(void *, int, int);
+static int  g_money_infinite;
+static long g_money_restore = -1;
+static int  g_stat_trace;
+
+static void install_money(so_module *mod)
+{
+    g_money_infinite = port_getenv_long("MONEY_INFINITE", 0) != 0;
+    g_money_restore = g_money_infinite ? -1 : port_getenv_long("MONEY_RESTORE", -1);
+    if (g_money_restore > 99999999)
+        g_money_restore = 99999999;
+    g_stat_trace = port_getenv_long("STAT_TRACE", 0) != 0;
+    if (!g_money_infinite && g_money_restore < 0 && !g_stat_trace)
+        return;
+
+    const uint32_t *get = (const uint32_t *)(mod->text_base + 0x230f44);
+    const uint32_t *set = (const uint32_t *)(mod->text_base + 0x22f258);
+    const uint32_t *single = (const uint32_t *)(mod->text_base + 0x428550);
+    const uint32_t *chain = (const uint32_t *)(mod->text_base + 0x4289ec);
+    if (get[0] != 0xe92d4070u || set[0] != 0xe92d47f0u
+        || single[0] != 0xe59f3004u || single[1] != 0xe79f0003u || single[2] != 0xe12fff1eu
+        || chain[0] != 0xe59030ecu || chain[1] != 0xe59330b0u || chain[2] != 0xe59305ecu) {
+        trace("tweaks: money: not the 1.1.6 library at the counter functions - left alone");
+        g_money_infinite = 0;
+        g_money_restore = -1;
+        g_stat_trace = 0;
+        return;
+    }
+    /* +0x428554 is "ldr r0, [pc, r3]" with r3 read from +0x42855c: the word at pc(=+0x42855c) + r3. */
+    g_money_slot = mod->text_base + 0x42855c + single[3];
+    g_get_stat = (int (*)(void *, int))(mod->text_base + 0x230f44);
+    g_set_stat = (void (*)(void *, int, int))(mod->text_base + 0x22f258);
+    trace("tweaks: money: %s%s (counters at singleton slot +0x%lx)",
+          g_money_infinite ? "infinite" : "restore on next sight of the infinite balance",
+          g_stat_trace ? ", counter trace on" : "", (unsigned long)(g_money_slot - mod->text_base));
+}
+
+/* The player's counters object, or NULL while any link of the chain is not there yet. */
+static void *player_counters(void)
+{
+    char *game = *(char **)g_money_slot;
+    if (!game)
+        return NULL;
+    char *a = *(char **)(game + 236);
+    if (!a)
+        return NULL;
+    char *b = *(char **)(a + 176);
+    if (!b)
+        return NULL;
+    return *(void **)(b + 1516);
+}
+
+static void money_tick(long frames)
+{
+    if (!g_money_slot)
+        return;
+    bool act = (g_money_infinite || g_money_restore >= 0) && frames % (g_money_infinite ? 1 : 30) == 0;
+    bool tr  = g_stat_trace && frames % 300 == 0;
+    if (!act && !tr)
+        return;
+    void *counters = player_counters();
+    if (!counters)
+        return;
+
+    if (tr) {
+        trace("tweaks: counters %d %d %d %d %d %d", g_get_stat(counters, 0), g_get_stat(counters, 1),
+              g_get_stat(counters, 2), g_get_stat(counters, 3), g_get_stat(counters, 4), g_get_stat(counters, 5));
+    }
+
+    if (!act)
+        return;
+    int now = g_get_stat(counters, kMoneyId);
+    if (g_money_infinite) {
+        if (now != kMoneyInfinite) {
+            g_set_stat(counters, kMoneyId, kMoneyInfinite);
+            static int announced;
+            if (announced < 3) {
+                announced++;
+                trace("tweaks: money: balance %d set to %d", now, kMoneyInfinite);
+            }
+        }
+    } else if (g_money_restore >= 0 && now == kMoneyInfinite) {
+        g_set_stat(counters, kMoneyId, (int)g_money_restore);
+        trace("tweaks: money: infinite balance replaced by %ld", g_money_restore);
+        g_money_restore = -1;
+    }
+}
+
 void tdkr_tweaks_install(so_module *mod)
 {
     long fight = port_getenv_long("FIGHT_CAMERA", 100);
@@ -303,6 +419,7 @@ void tdkr_tweaks_install(so_module *mod)
         install_fast_cas(mod);
 
     install_frame_limit(mod);
+    install_money(mod);
 
     if (port_getenv_long("SLEEP_TRACE", 0)) {
         g_trace_mod = mod;
@@ -345,6 +462,7 @@ static int set_uclamp(uint32_t lo)
 void tdkr_sched_tick(long frames)
 {
     frame_limit_tick();
+    money_tick(frames);
 
     static int state = -1;      /* -1 not tried, 0 off, 1 working */
     static uint32_t lo;

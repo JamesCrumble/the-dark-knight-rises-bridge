@@ -376,6 +376,14 @@ final class GameProcess {
         for (java.util.Map.Entry<String, String> e : SettingsActivity.load(ctx).entrySet())
             if (!e.getKey().equals("RENDER_HEIGHT") && !e.getKey().equals("CPU_PRIME")
                     && !e.getKey().equals("AUDIO_LATENCY_MS") && !e.getKey().equals("PERF_HINT")) env.put(e.getKey(), e.getValue());
+        // The balance to return to is a one-shot value: it goes to the game only while the infinite balance is off,
+        // and is removed from settings.txt once handed over.
+        if (!"1".equals(env.get("TDKR_MONEY_INFINITE")) && env.containsKey("TDKR_MONEY_RESTORE")) {
+            SettingsActivity.consume(ctx, "TDKR_MONEY_RESTORE");
+            appendLog("[wrapper] money restore " + env.get("TDKR_MONEY_RESTORE"));
+        } else {
+            env.remove("TDKR_MONEY_RESTORE");
+        }
         // Our qemu: guest syscall counts every 10 s in the log (which ones leave translated code most often).
         env.put("QEMU_SYSCALL_STATS", "1");
         // Guest-function profile: qemu samples the game's PC (tools/guest_prof.py maps it to functions).

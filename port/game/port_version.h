@@ -7,6 +7,6 @@
 #ifndef TDKR_PORT_VERSION_H
 #define TDKR_PORT_VERSION_H
 
-#define TDKR_PORT_VERSION "0.1"
+#define TDKR_PORT_VERSION "0.4"
 
 #endif /* TDKR_PORT_VERSION_H */
