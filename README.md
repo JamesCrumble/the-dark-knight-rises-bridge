@@ -188,6 +188,6 @@ GPL-3.0, см. [LICENSE](LICENSE). Происхождение заимствов
 [port/NOTICE.md](port/NOTICE.md). Патч qemu — GPL-2.0-or-later, как сам QEMU.
 
 Порт N.O.V.A. 3 для PortMaster и его `portbase`, на которых основан проект, созданы EapRules.
-Android-мост и слой этой игры написаны JamesCrumble; в работе над этим проектом участвовал Claude (Anthropic).
+Android-мост и слой этой игры написаны JamesCrumble.
 
 The Dark Knight Rises © Gameloft / Warner Bros. Проект не связан с правообладателями и не содержит файлов игры.
