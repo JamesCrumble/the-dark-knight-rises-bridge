@@ -144,11 +144,11 @@ GPU телефона. Способ тот же, что в NOVA3 Bridge, Shadowgu
 Сборка идёт в WSL (Ubuntu). Глобально ничего ставить не нужно, кроме уже имеющихся в системе
 `gcc-arm-linux-gnueabihf`/`g++-arm-linux-gnueabihf`, `qemu-arm` и Go (для `mstrace`).
 
-Кладутся в корень проекта и в git не входят:
+В git не входят (`jdk`, `android-sdk`, `sdl-arm` лежат в общей папке `../__shared-third-party__`; локальная копия в корне проекта имеет приоритет; остальное — в корне проекта):
 
-- `jdk/` — JDK 17;
-- `android-sdk/` — build-tools 34.0.0, platform 34, platform-tools;
-- `sdl-arm/` — SDL2 под armhf;
+- `../__shared-third-party__/jdk/` — JDK 17;
+- `../__shared-third-party__/android-sdk/` — build-tools 34.0.0, platform 34, platform-tools;
+- `../__shared-third-party__/sdl-arm/` — SDL2 под armhf;
 - `qemu/out/qemu-arm-F.stripped` — собранный qemu;
 - `port/android/build/sysroot/` — armhf-библиотеки (или `port/android/make_sysroot.sh`);
 - `gamebin/` — ваш APK игры и архив кэша, `tdkrdata/` — распакованная игра

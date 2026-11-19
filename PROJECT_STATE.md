@@ -46,7 +46,7 @@
 | `port/portbase/` | база порта из nova3probe (идентификаторы `nova3` переименованы в `tdkr`) |
 | `port/android/` | APK-обёртка (пакет `com.jamescrumble.tdkr`), `build_apk.sh` |
 | `qemu/` | патчи и сборочные файлы qemu из nova3probe; бинарник `qemu/out/qemu-arm-F.stripped` скопирован, здесь не пересобирался |
-| `jdk/ android-sdk/ sdl-arm/` | локальные тулчейны, скопированы из nova3probe (в git не входят) |
+| `../__shared-third-party__/{jdk,android-sdk,sdl-arm}` | общие тулчейны всех проектов (в git не входят) |
 | `port/android/build/sysroot/` | armhf sysroot, скопирован из nova3probe |
 | `tdkrdata/` | распакованная игра: `lib/armeabi-v7a/libKRAS.so`, `files/` (кэш) |
 | `extracted/` | разбор APK: `classes.txt` (dexdump), `strings.txt`, `imports.txt` |
@@ -69,7 +69,7 @@
 - Настройки из меню (лимит кадров, кадров «в полёте», ядра 6–7, ADPF) на этой игре.
 - ETC1-текстуры: мост печатает «no decoder ... forwarding to the driver» и отдаёт их Adreno как есть
   (расширение ETC1 у драйвера есть); на ПК под llvmpipe такие текстуры могут быть пустыми.
-- Сборка qemu из исходников в этой папке (исходников `qemu-src/` здесь нет).
+- Сборка qemu из исходников в этой папке (исходников в проекте нет; `../__shared-third-party__/qemu-src/the-dark-knight-rises-probe/`).
 
 ## Убрано из слоя N.O.V.A. 3
 `obb_cache.cpp`, `patch.cpp` (DRM), `xml_hook.cpp` и хуки по смещениям в `tweaks.cpp` (FOV, физика в отдельном
